@@ -1,0 +1,29 @@
+{
+  "name": "Vue Template",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "output": "dist",
+  "dependencies": {
+    "@lark-base-open/js-sdk": "0.4.0",
+    "@mapbox/node-pre-gyp": "^2.0.3",
+    "element-plus": "^2.3.6",
+    "katex": "^0.16.27",
+    "markdown-it": "^14.1.0",
+    "markdown-it-mathjax": "^2.0.0",
+    "node-opencc": "^2.0.1",
+    "reset-css": "^5.0.1",
+    "vue": "^3.2.37",
+    "vue-i18n": "^9.4.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.3",
+    "unplugin-auto-import": "^0.16.4",
+    "unplugin-vue-components": "^0.25.1",
+    "vite": "^7.3.1"
+  }
+}
