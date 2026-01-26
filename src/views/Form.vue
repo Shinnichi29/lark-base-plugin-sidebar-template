@@ -10,19 +10,19 @@
   import { ref, onMounted, watch } from 'vue';
   import { bitable } from '@lark-base-open/js-sdk';
   import MarkdownIt from 'markdown-it';
-  // 使用更适合MathJax 3的插件
-  import markdownItMathjax3 from 'markdown-it-mathjax3';
+  // 继续使用当前已安装的插件
+  import markdownItMathjax from 'markdown-it-mathjax';
 
-  // 初始化Markdown解析器，配置MathJax 3
+  // 初始化Markdown解析器，配置mathjax插件
   const md = new MarkdownIt({
     html: true,
     linkify: true,
     typographer: true
-  }).use(markdownItMathjax3, {
-    tex: {
-      inlineMath: [['$', '$'], ['\\(', '\\)']], // 支持$...$和\(...\)作为行内公式
-      displayMath: [['$$', '$$'], ['\\[', '\\]']] // 支持$$...$$和\[...\]作为块级公式
-    }
+  }).use(markdownItMathjax, {
+    // 配置支持$...$作为行内公式
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    // 配置支持$$...$$作为块级公式
+    displayMath: [['$$', '$$'], ['\\[', '\\]']]
   });
 
   // 选择的目标区域 'left' 或 'right'
@@ -46,7 +46,7 @@
         return;
       }
 
-      // 配置MathJax
+      // 配置MathJax，确保支持$...$行内公式
       window.MathJax = {
         tex: {
           inlineMath: [['$', '$'], ['\\(', '\\)']],
@@ -76,6 +76,7 @@
     await loadMathJax();
     if (window.MathJax && MathJax.isReady) {
       try {
+        // 重新渲染所有公式
         await MathJax.typesetPromise();
       } catch (e) {
         console.warn('MathJax渲染错误:', e);
@@ -83,7 +84,7 @@
     }
   };
 
-  // 监听内容变化，重新渲染公式
+  // 监听内容变化，自动重新渲染公式
   watch([leftHtmlContent, rightHtmlContent], async () => {
     await renderMathJax();
   }, { immediate: false });
@@ -129,7 +130,7 @@ $$
 BMI计算公式：
 $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
 
-用户提供的示例：
+用户提供的物理公式示例：
 1.实验装置：单色平行光垂直入射到双缝上，双缝间距为$d$，每条缝的宽度为$a$（$d \gg a$），双缝到观察屏的距离为$D$（$D \gg d$，远场条件）。
 2.波长：入射光波长为$\\lambda$。
 3.坐标：观察屏上某点到中央明纹中心的距离为$x$。`;
@@ -458,7 +459,7 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
     padding: 0;
   }
 
-  /* 数学公式样式 */
+  /* 数学公式样式优化 */
   .markdown-content :deep(mjx-container) {
     overflow-x: auto;
     overflow-y: hidden;
