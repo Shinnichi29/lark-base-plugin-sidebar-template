@@ -7,15 +7,22 @@
  * @desc       : 主要页面
 -->
 <script setup>
-  import { ref, onMounted } from 'vue';
+  import { ref, onMounted, watch } from 'vue';
   import { bitable } from '@lark-base-open/js-sdk';
   import MarkdownIt from 'markdown-it';
+  // 使用更适合MathJax 3的插件
+  import markdownItMathjax3 from 'markdown-it-mathjax3';
 
-  // 初始化Markdown解析器
+  // 初始化Markdown解析器，配置MathJax 3
   const md = new MarkdownIt({
     html: true,
     linkify: true,
     typographer: true
+  }).use(markdownItMathjax3, {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']], // 支持$...$和\(...\)作为行内公式
+      displayMath: [['$$', '$$'], ['\\[', '\\]']] // 支持$$...$$和\[...\]作为块级公式
+    }
   });
 
   // 选择的目标区域 'left' 或 'right'
@@ -30,6 +37,56 @@
   const rightHtmlContent = ref('');
 
   const base = bitable.base;
+
+  // 动态加载MathJax
+  const loadMathJax = () => {
+    return new Promise((resolve) => {
+      if (window.MathJax) {
+        resolve();
+        return;
+      }
+
+      // 配置MathJax
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']],
+          processEscapes: true
+        },
+        svg: {
+          fontCache: 'global'
+        },
+        startup: {
+          ready: () => {
+            resolve();
+            MathJax.startup.defaultReady();
+          }
+        }
+      };
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+      script.async = true;
+      document.head.appendChild(script);
+    });
+  };
+
+  // 渲染MathJax公式
+  const renderMathJax = async () => {
+    await loadMathJax();
+    if (window.MathJax && MathJax.isReady) {
+      try {
+        await MathJax.typesetPromise();
+      } catch (e) {
+        console.warn('MathJax渲染错误:', e);
+      }
+    }
+  };
+
+  // 监听内容变化，重新渲染公式
+  watch([leftHtmlContent, rightHtmlContent], async () => {
+    await renderMathJax();
+  }, { immediate: false });
 
   onMounted(async () => {
     selectedArea.value = 'left';
@@ -55,9 +112,32 @@ function hello() {
 }
 \`\`\`
 
-[链接文本](https://example.com)`;
+[链接文本](https://example.com)
+
+| 表头1 | 表头2 | 表头3 |
+|------|------|------|
+| 内容1 | 内容2 | 内容3 |
+| 内容4 | 内容5 | 内容6 |
+
+数学公式示例：
+- 行内公式：$E = mc^2$ 和 $F = ma$
+- 块级公式：
+$$
+E = mc^2
+$$
+
+BMI计算公式：
+$$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
+
+用户提供的示例：
+1.实验装置：单色平行光垂直入射到双缝上，双缝间距为$d$，每条缝的宽度为$a$（$d \gg a$），双缝到观察屏的距离为$D$（$D \gg d$，远场条件）。
+2.波长：入射光波长为$\\lambda$。
+3.坐标：观察屏上某点到中央明纹中心的距离为$x$。`;
     
     leftHtmlContent.value = md.render(defaultMarkdown);
+    
+    // 确保MathJax正确渲染公式
+    await renderMathJax();
   });
 
   // 点击左侧区域
@@ -118,6 +198,9 @@ function hello() {
           rightHtmlContent.value = md.render(cellContent);
           console.log('右侧解析结果:', rightHtmlContent.value);
         }
+        
+        // 确保MathJax正确渲染公式
+        await renderMathJax();
       } catch (error) {
         console.error('获取单元格内容失败:', error);
         // 错误信息也渲染成Markdown格式
@@ -237,7 +320,7 @@ function hello() {
   .markdown-content :deep(h1) {
     font-size: 24px;
     font-weight: bold;
-    color: #333;
+    color: #000000;
     margin-bottom: 15px;
     padding-bottom: 5px;
     border-bottom: 1px solid #eee;
@@ -246,7 +329,7 @@ function hello() {
   .markdown-content :deep(h2) {
     font-size: 20px;
     font-weight: bold;
-    color: #555;
+    color: #000000;
     margin-bottom: 12px;
     margin-top: 20px;
   }
@@ -255,9 +338,16 @@ function hello() {
   .markdown-content :deep(h3) {
     font-size: 18px;
     font-weight: bold;
-    color: #666;
+    color: #000000;
     margin-bottom: 10px;
     margin-top: 18px;
+  }
+
+  /* 确保标题中的加粗文本显示为黑色 */
+  .markdown-content :deep(h1 strong),
+  .markdown-content :deep(h2 strong),
+  .markdown-content :deep(h3 strong) {
+    color: #000;
   }
 
   .markdown-content :deep(strong) {
@@ -311,6 +401,26 @@ function hello() {
     list-style-type: square;
   }
 
+  /* 表格样式 */
+  .markdown-content :deep(table) {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 15px;
+  }
+
+  .markdown-content :deep(th),
+  .markdown-content :deep(td) {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+  }
+
+  .markdown-content :deep(th) {
+    background-color: #f2f2f2;
+    font-weight: bold;
+    color: #333;
+  }
+
   .markdown-content :deep(a) {
     color: rgb(20, 86, 240);
     text-decoration: none;
@@ -346,5 +456,12 @@ function hello() {
   .markdown-content :deep(pre code) {
     background-color: transparent;
     padding: 0;
+  }
+
+  /* 数学公式样式 */
+  .markdown-content :deep(mjx-container) {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.2em 0;
   }
 </style>
