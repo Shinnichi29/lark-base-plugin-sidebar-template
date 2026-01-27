@@ -13,11 +13,12 @@
   // 继续使用当前已安装的插件
   import markdownItMathjax from 'markdown-it-mathjax';
 
-  // 初始化Markdown解析器，配置mathjax插件
+  // 初始化Markdown解析器，配置mathjax插件和breaks选项
   const md = new MarkdownIt({
     html: true,
     linkify: true,
-    typographer: true
+    typographer: true,
+    breaks: true  // 启用单个换行符转换为<br>标签
   }).use(markdownItMathjax, {
     // 配置支持$...$作为行内公式
     inlineMath: [['$', '$'], ['\\(', '\\)']],
@@ -36,9 +37,13 @@
   const leftHtmlContent = ref('');
   const rightHtmlContent = ref('');
 
+  // 左右区域锁定状态
+  const leftLocked = ref(false);
+  const rightLocked = ref(false);
+
   const base = bitable.base;
 
-  // 动态加载MathJax
+  // 动态加载MathJax 2
   const loadMathJax = () => {
     return new Promise((resolve) => {
       if (window.MathJax) {
@@ -46,26 +51,35 @@
         return;
       }
 
-      // 配置MathJax，确保支持$...$行内公式
+      // 配置MathJax 2，确保支持$...$行内公式
       window.MathJax = {
-        tex: {
+        jax: ["input/TeX", "output/HTML-CSS"],
+        tex2jax: {
           inlineMath: [['$', '$'], ['\\(', '\\)']],
           displayMath: [['$$', '$$'], ['\\[', '\\]']],
-          processEscapes: true
+          processEscapes: true,
+          processEnvironments: true
         },
-        svg: {
-          fontCache: 'global'
+        TeX: {
+          extensions: ["AMSmath.js", "AMSsymbols.js"],
+          equationNumbers: { autoNumber: "AMS" }
         },
-        startup: {
-          ready: () => {
+        "HTML-CSS": {
+          availableFonts: ["TeX"],
+          imageFont: null,
+          linebreaks: { automatic: true },
+          preferredFont: "TeX",
+          scale: 100
+        },
+        AuthorInit: function() {
+          MathJax.Hub.Register.StartupHook("Begin Typeset", function() {
             resolve();
-            MathJax.startup.defaultReady();
-          }
+          });
         }
       };
 
       const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS_HTML';
       script.async = true;
       document.head.appendChild(script);
     });
@@ -74,10 +88,10 @@
   // 渲染MathJax公式
   const renderMathJax = async () => {
     await loadMathJax();
-    if (window.MathJax && MathJax.isReady) {
+    if (window.MathJax) {
       try {
         // 重新渲染所有公式
-        await MathJax.typesetPromise();
+        await MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
       } catch (e) {
         console.warn('MathJax渲染错误:', e);
       }
@@ -133,7 +147,13 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
 用户提供的物理公式示例：
 1.实验装置：单色平行光垂直入射到双缝上，双缝间距为$d$，每条缝的宽度为$a$（$d \gg a$），双缝到观察屏的距离为$D$（$D \gg d$，远场条件）。
 2.波长：入射光波长为$\\lambda$。
-3.坐标：观察屏上某点到中央明纹中心的距离为$x$。`;
+3.坐标：观察屏上某点到中央明纹中心的距离为$x$。
+
+用户提供的格式优化示例：
+- 你右脚施压 $\\rightarrow$ 重心在右脚
+$\\rightarrow$ 向左转弯
+- 你左脚施压 $\\rightarrow$ 重心在左脚
+$\\rightarrow$ 向右转弯`;
     
     leftHtmlContent.value = md.render(defaultMarkdown);
     
@@ -149,6 +169,16 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
   // 点击右侧区域
   function selectRightArea() {
     selectedArea.value = 'right';
+  }
+
+  // 切换左侧区域锁定状态
+  function toggleLeftLock() {
+    leftLocked.value = !leftLocked.value;
+  }
+
+  // 切换右侧区域锁定状态
+  function toggleRightLock() {
+    rightLocked.value = !rightLocked.value;
   }
 
   // 获取单元格内容的通用函数
@@ -189,12 +219,12 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
         const cellContent = getCellContent(data);
         console.log('处理后的内容:', cellContent);
         
-        // 根据当前选中的区域更新内容
-        if (selectedArea.value === 'left') {
+        // 根据当前选中的区域更新内容，但仅在未锁定时更新
+        if (selectedArea.value === 'left' && !leftLocked.value) {
           leftContent.value = cellContent;
           leftHtmlContent.value = md.render(cellContent);
           console.log('左侧解析结果:', leftHtmlContent.value);
-        } else {
+        } else if (selectedArea.value === 'right' && !rightLocked.value) {
           rightContent.value = cellContent;
           rightHtmlContent.value = md.render(cellContent);
           console.log('右侧解析结果:', rightHtmlContent.value);
@@ -207,9 +237,9 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
         // 错误信息也渲染成Markdown格式
         const errorContent = `# 错误
 获取单元格内容失败: ${error.message}`;
-        if (selectedArea.value === 'left') {
+        if (selectedArea.value === 'left' && !leftLocked.value) {
           leftHtmlContent.value = md.render(errorContent);
-        } else {
+        } else if (selectedArea.value === 'right' && !rightLocked.value) {
           rightHtmlContent.value = md.render(errorContent);
         }
       }
@@ -224,12 +254,15 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
       <!-- 左侧区域 -->
       <div 
         class="content-area" 
-        :class="{ 'selected': selectedArea === 'left' }"
+        :class="{ 'selected': selectedArea === 'left', 'locked': leftLocked }"
         @click="selectLeftArea"
       >
         <div class="content-title">
           左侧区域
           <span class="selected-indicator" v-if="selectedArea === 'left'">✓</span>
+          <button class="lock-button" @click.stop="toggleLeftLock" :title="leftLocked ? '解锁' : '锁定'">
+            {{ leftLocked ? '🔒' : '🔓' }}
+          </button>
         </div>
         <div 
           class="markdown-content" 
@@ -240,12 +273,15 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
       <!-- 右侧区域 -->
       <div 
         class="content-area" 
-        :class="{ 'selected': selectedArea === 'right' }"
+        :class="{ 'selected': selectedArea === 'right', 'locked': rightLocked }"
         @click="selectRightArea"
       >
         <div class="content-title">
           右侧区域
           <span class="selected-indicator" v-if="selectedArea === 'right'">✓</span>
+          <button class="lock-button" @click.stop="toggleRightLock" :title="rightLocked ? '解锁' : '锁定'">
+            {{ rightLocked ? '🔒' : '🔓' }}
+          </button>
         </div>
         <div 
           class="markdown-content" 
@@ -291,6 +327,12 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
     box-shadow: 0 0 0 2px rgba(20, 86, 240, 0.2);
   }
 
+  /* 锁定状态样式 */
+  .content-area.locked {
+    background-color: #f5f5f5;
+    border-color: #999;
+  }
+
   .content-title {
     font-weight: bold;
     margin-bottom: 15px;
@@ -306,6 +348,21 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
     color: rgb(20, 86, 240);
   }
 
+  /* 锁定按钮样式 */
+  .lock-button {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+
+  .lock-button:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+  }
+
   /* Markdown内容区域样式 */
   .markdown-content {
     flex: 1;
@@ -315,6 +372,12 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
     border-radius: 8px;
     font-size: 14px;
     line-height: 1.6;
+  }
+
+  /* 锁定时内容区域样式 */
+  .content-area.locked .markdown-content {
+    background-color: #f0f0f0;
+    cursor: not-allowed;
   }
 
   /* Markdown解析后的样式 - 标题 */
@@ -460,9 +523,8 @@ $$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
   }
 
   /* 数学公式样式优化 */
-  .markdown-content :deep(mjx-container) {
+  .markdown-content :deep(.MathJax) {
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 0.2em 0;
   }
 </style>
