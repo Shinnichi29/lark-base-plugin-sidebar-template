@@ -182,6 +182,7 @@ $\\rightarrow$ 向右转弯`;
   }
 
   // 获取单元格内容的通用函数
+  // 获取单元格内容的通用函数
   function getCellContent(data) {
     // 处理不同类型的单元格数据
     if (!data) return '';
@@ -191,9 +192,9 @@ $\\rightarrow$ 向右转弯`;
       return data;
     }
     
-    // 富文本类型
+    // 富文本类型 - 修复：拼接所有富文本元素的text属性
     if (Array.isArray(data) && data[0]?.text) {
-      return data[0].text;
+      return data.map(item => item.text || '').join('');
     }
     
     // 其他类型
