@@ -7,24 +7,18 @@
  * @desc       : 主要页面
 -->
 <script setup>
-  import { ref, onMounted, watch } from 'vue';
+  import { ref, onMounted, watch, nextTick } from 'vue';
   import { bitable } from '@lark-base-open/js-sdk';
   import MarkdownIt from 'markdown-it';
-  // 继续使用当前已安装的插件
   import markdownItMathjax from 'markdown-it-mathjax';
 
-  // 初始化Markdown解析器，配置mathjax插件和breaks选项
+  // 初始化Markdown解析器，使用markdown-it-mathjax插件处理公式
   const md = new MarkdownIt({
     html: true,
     linkify: true,
     typographer: true,
     breaks: true  // 启用单个换行符转换为<br>标签
-  }).use(markdownItMathjax, {
-    // 配置支持$...$作为行内公式
-    inlineMath: [['$', '$'], ['\\(', '\\)']],
-    // 配置支持$$...$$作为块级公式
-    displayMath: [['$$', '$$'], ['\\[', '\\]']]
-  });
+  }).use(markdownItMathjax);
 
   // 选择的目标区域 'left' 或 'right'
   const selectedArea = ref('left');
@@ -43,7 +37,7 @@
 
   const base = bitable.base;
 
-  // 动态加载MathJax 2
+  // 动态加载MathJax 3
   const loadMathJax = () => {
     return new Promise((resolve) => {
       if (window.MathJax) {
@@ -51,36 +45,37 @@
         return;
       }
 
-      // 配置MathJax 2，确保支持$...$行内公式
+      // MathJax 3配置，支持所有常用的数学命令
       window.MathJax = {
-        jax: ["input/TeX", "output/HTML-CSS"],
-        tex2jax: {
+        tex: {
           inlineMath: [['$', '$'], ['\\(', '\\)']],
           displayMath: [['$$', '$$'], ['\\[', '\\]']],
           processEscapes: true,
-          processEnvironments: true
+          packages: {
+            '[+]': ['text']  // 确保text包被加载，支持\text命令
+          },
+          text: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']]
+          }
         },
-        TeX: {
-          extensions: ["AMSmath.js", "AMSsymbols.js"],
-          equationNumbers: { autoNumber: "AMS" }
+        svg: {
+          fontCache: 'global'
         },
-        "HTML-CSS": {
-          availableFonts: ["TeX"],
-          imageFont: null,
-          linebreaks: { automatic: true },
-          preferredFont: "TeX",
-          scale: 100
-        },
-        AuthorInit: function() {
-          MathJax.Hub.Register.StartupHook("Begin Typeset", function() {
-            resolve();
-          });
+        options: {
+          skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
+          enableMenu: false,
+          renderActions: {
+            insertedScript: [200, () => {
+              resolve();
+            }]
+          }
         }
       };
 
       const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS_HTML';
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
       script.async = true;
+      script.onload = () => resolve();
       document.head.appendChild(script);
     });
   };
@@ -90,74 +85,76 @@
     await loadMathJax();
     if (window.MathJax) {
       try {
-        // 重新渲染所有公式
-        await MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
+        // 清除之前的渲染任务
+        window.MathJax.typesetClear();
+        // 渲染当前页面的所有公式
+        await window.MathJax.typesetPromise();
+        console.log('MathJax渲染完成');
       } catch (e) {
         console.warn('MathJax渲染错误:', e);
       }
     }
   };
 
+  // 自定义Markdown渲染函数，现在直接使用markdown-it-mathjax插件
+  const renderMarkdown = (content) => {
+    if (!content) return '';
+    
+    // 直接使用markdown-it-mathjax插件处理公式
+    return md.render(content);
+  };
+
   // 监听内容变化，自动重新渲染公式
-  watch([leftHtmlContent, rightHtmlContent], async () => {
+  watch([leftContent, rightContent], async () => {
+    if (selectedArea.value === 'left' && !leftLocked.value) {
+      leftHtmlContent.value = renderMarkdown(leftContent.value);
+    } else if (selectedArea.value === 'right' && !rightLocked.value) {
+      rightHtmlContent.value = renderMarkdown(rightContent.value);
+    }
+    
+    // 等待DOM更新后再渲染公式
+    await nextTick();
     await renderMathJax();
-  }, { immediate: false });
+  }, { immediate: false, deep: true });
 
   onMounted(async () => {
     selectedArea.value = 'left';
     // 添加默认的Markdown示例用于测试
-    const defaultMarkdown = `# 标题一
-## 标题二
-### 标题三
-**加粗文本** 和 *斜体文本*
+    const defaultMarkdown = `# 公式测试示例
 
-- 列表项1
-- 列表项2
-- 列表项3
-
-1. 有序列表项1
-2. 有序列表项2
-3. 有序列表项3
-
-\`行内代码\`
-
-\`\`\`javascript
-function hello() {
-  console.log("Hello World");
-}
-\`\`\`
-
-[链接文本](https://example.com)
-
-| 表头1 | 表头2 | 表头3 |
-|------|------|------|
-| 内容1 | 内容2 | 内容3 |
-| 内容4 | 内容5 | 内容6 |
-
-数学公式示例：
+## 基础公式
 - 行内公式：$E = mc^2$ 和 $F = ma$
 - 块级公式：
 $$
 E = mc^2
 $$
 
-BMI计算公式：
-$$BMI=\\frac{体重(kg)}{身高(m)^2}=\\frac{80}{1.7^2}\\approx27.7$$
+## 复杂公式
+### 体积计算
+公式：$V_c = \pi \times r^2 \times L$
+(注意单位统一，建议全部换算成cm，得出的结果即为mL)
 
-用户提供的物理公式示例：
-1.实验装置：单色平行光垂直入射到双缝上，双缝间距为$d$，每条缝的宽度为$a$（$d \gg a$），双缝到观察屏的距离为$D$（$D \gg d$，远场条件）。
-2.波长：入射光波长为$\\lambda$。
-3.坐标：观察屏上某点到中央明纹中心的距离为$x$。
+### 孔隙体积
+计算死体积($V_m$)：乘以孔隙率($\epsilon$)
+$$V_m = V_c \times \epsilon$$
 
-用户提供的格式优化示例：
-- 你右脚施压 $\\rightarrow$ 重心在右脚
-$\\rightarrow$ 向左转弯
-- 你左脚施压 $\\rightarrow$ 重心在左脚
-$\\rightarrow$ 向右转弯`;
+- 全多孔填料(如C18)：$\epsilon$通常取0.65 (65%)
+- 表面多孔填料(实心核)：$\epsilon$通常取0.55 (55%)
+
+### 色谱柱平衡
+通常建议用10-20倍柱体积的流动相来平衡色谱柱。例如对于一根30cm × 4.6mm的柱子（约3.3mL），平衡一次大概需要33mL - 66mL的流动相。
+
+### 偏导数和链式法则
+$$ \\frac{\\partial L}{\\partial w} = \\frac{\\partial L}{\\partial y} \\cdot \\frac{\\partial y}{\\partial z} \\cdot \\frac{\\partial z}{\\partial w} $$
+
+### 包含文本的公式
+$$V_m \\approx 0.5 \\times L\\text{(cm)} \\times d\\text{(cm)}^2 \\times \\pi / 4$$`;
     
-    leftHtmlContent.value = md.render(defaultMarkdown);
+    leftContent.value = defaultMarkdown;
+    leftHtmlContent.value = renderMarkdown(defaultMarkdown);
     
     // 确保MathJax正确渲染公式
+    await nextTick();
     await renderMathJax();
   });
 
@@ -181,7 +178,6 @@ $\\rightarrow$ 向右转弯`;
     rightLocked.value = !rightLocked.value;
   }
 
-  // 获取单元格内容的通用函数
   // 获取单元格内容的通用函数
   function getCellContent(data) {
     // 处理不同类型的单元格数据
@@ -223,15 +219,16 @@ $\\rightarrow$ 向右转弯`;
         // 根据当前选中的区域更新内容，但仅在未锁定时更新
         if (selectedArea.value === 'left' && !leftLocked.value) {
           leftContent.value = cellContent;
-          leftHtmlContent.value = md.render(cellContent);
+          leftHtmlContent.value = renderMarkdown(cellContent);
           console.log('左侧解析结果:', leftHtmlContent.value);
         } else if (selectedArea.value === 'right' && !rightLocked.value) {
           rightContent.value = cellContent;
-          rightHtmlContent.value = md.render(cellContent);
+          rightHtmlContent.value = renderMarkdown(cellContent);
           console.log('右侧解析结果:', rightHtmlContent.value);
         }
         
         // 确保MathJax正确渲染公式
+        await nextTick();
         await renderMathJax();
       } catch (error) {
         console.error('获取单元格内容失败:', error);
@@ -239,9 +236,9 @@ $\\rightarrow$ 向右转弯`;
         const errorContent = `# 错误
 获取单元格内容失败: ${error.message}`;
         if (selectedArea.value === 'left' && !leftLocked.value) {
-          leftHtmlContent.value = md.render(errorContent);
+          leftHtmlContent.value = renderMarkdown(errorContent);
         } else if (selectedArea.value === 'right' && !rightLocked.value) {
-          rightHtmlContent.value = md.render(errorContent);
+          rightHtmlContent.value = renderMarkdown(errorContent);
         }
       }
     }
@@ -408,10 +405,30 @@ $\\rightarrow$ 向右转弯`;
     margin-top: 18px;
   }
 
+  /* 四级标题样式 */
+  .markdown-content :deep(h4) {
+    font-size: 16px;
+    font-weight: bold;
+    color: #000000;
+    margin-bottom: 8px;
+    margin-top: 16px;
+  }
+
+  /* 五级标题样式 */
+  .markdown-content :deep(h5) {
+    font-size: 15px;
+    font-weight: bold;
+    color: #000000;
+    margin-bottom: 6px;
+    margin-top: 14px;
+  }
+
   /* 确保标题中的加粗文本显示为黑色 */
   .markdown-content :deep(h1 strong),
   .markdown-content :deep(h2 strong),
-  .markdown-content :deep(h3 strong) {
+  .markdown-content :deep(h3 strong),
+  .markdown-content :deep(h4 strong),
+  .markdown-content :deep(h5 strong) {
     color: #000;
   }
 
@@ -524,6 +541,19 @@ $\\rightarrow$ 向右转弯`;
   }
 
   /* 数学公式样式优化 */
+  .markdown-content :deep(.math-inline) {
+    font-style: normal;
+  }
+  
+  .markdown-content :deep(.math-display) {
+    margin: 1em 0;
+    text-align: center;
+  }
+  
+  .markdown-content :deep(math) {
+    font-size: 1.1em;
+  }
+  
   .markdown-content :deep(.MathJax) {
     overflow-x: auto;
     overflow-y: hidden;
