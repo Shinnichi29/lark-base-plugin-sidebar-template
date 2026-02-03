@@ -5,6 +5,24 @@
     <link rel="icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Base Script</title>
+
+    <!-- 引入 MathJax 官方 CDN（稳定版，支持LaTex公式） -->
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <!-- 配置 MathJax 全局参数（与markdown解析配置保持一致） -->
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']], // 行内公式分隔符
+          displayMath: [['$$', '$$'], ['\\[', '\\]']] // 块级公式分隔符
+        },
+        chtml: {
+          scale: 1.0, // 公式缩放比例
+          displayAlign: 'center' // 块级公式居中对齐
+        }
+      };
+    </script>
+    <!-- 可选：添加CSP配置，解决GitHub Pages脚本限制 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdn.jsdelivr.net; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.byteimg.com;">
   </head>
   <body>
     <div id="app"></div>
