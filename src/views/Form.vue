@@ -10,7 +10,7 @@
   import { ref, onMounted, watch, nextTick } from 'vue';
   import { bitable } from '@lark-base-open/js-sdk';
   import MarkdownIt from 'markdown-it';
-  import markdownItMathjax from 'markdown-it-mathjax';
+  import mathjax3 from 'markdown-it-mathjax3';
 
   // 初始化Markdown解析器，使用markdown-it-mathjax插件处理公式
   const md = new MarkdownIt({
@@ -18,7 +18,12 @@
     linkify: true,
     typographer: true,
     breaks: true  // 启用单个换行符转换为<br>标签
-  }).use(markdownItMathjax);
+  }).use(mathjax3, {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']], // 与index.html的MathJax配置对齐
+    displayMath: [['$$', '$$'], ['\\[', '\\]']]
+  }
+});
 
   // 选择的目标区域 'left' 或 'right'
   const selectedArea = ref('left');
@@ -36,7 +41,35 @@
   const rightLocked = ref(false);
 
   const base = bitable.base;
-
+  // 3. 新增：markdown解析+公式渲染的函数（替换你原有的解析逻辑）
+  const parseAndRenderMarkdown = async (content, targetRef) => {
+    // 步骤1：解析markdown为HTML
+    const parsedHtml = md.render(content);
+    // 步骤2：将解析后的HTML赋值给目标ref（更新DOM）
+    targetRef.value = parsedHtml;
+    // 步骤3：等待DOM更新完成后，强制触发MathJax渲染公式
+    await nextTick();
+    if (window.MathJax) {
+      window.MathJax.typesetClear(); // 清空缓存
+      window.MathJax.typeset(); // 重新扫描DOM渲染公式
+    }
+  };
+  
+  // 4. 示例：在需要解析markdown的地方调用该函数（比如内容变化时）
+  // （替换你原有的markdown解析逻辑，以leftContent为例）
+  watch(leftContent, (newVal) => {
+    parseAndRenderMarkdown(newVal, leftHtmlContent);
+  });
+  
+  // 5. 组件挂载时，若有初始内容，执行一次解析
+  onMounted(() => {
+    if (leftContent.value) {
+      parseAndRenderMarkdown(leftContent.value, leftHtmlContent);
+    }
+    if (rightContent.value) {
+      parseAndRenderMarkdown(rightContent.value, rightHtmlContent);
+    }
+  });
   // 动态加载MathJax 3
   const loadMathJax = () => {
     return new Promise((resolve) => {
