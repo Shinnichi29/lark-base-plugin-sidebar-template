@@ -19,11 +19,11 @@
     typographer: true,
     breaks: true  // 启用单个换行符转换为<br>标签
   }).use(mathjax3, {
-  tex: {
-    inlineMath: [['$', '$'], ['\\(', '\\)']], // 与index.html的MathJax配置对齐
-    displayMath: [['$$', '$$'], ['\\[', '\\]']]
-  }
-});
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']], // 与index.html的MathJax配置对齐
+      displayMath: [['$$', '$$'], ['\\[', '\\]']]
+    }
+  });
 
   // 选择的目标区域 'left' 或 'right'
   const selectedArea = ref('left');
