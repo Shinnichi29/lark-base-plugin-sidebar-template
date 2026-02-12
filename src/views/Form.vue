@@ -3,14 +3,14 @@
  * @Author     : itchaox
  * @Date       : 2023-09-26 15:10
  * @LastAuthor : Wang Chao
- * @LastTime   : 2025-02-27 06:39
+ * @LastTime   : 2025-03-01 10:00
  * @desc       : 主要页面
 -->
 <script setup>
-  import { ref, onMounted, watch, nextTick } from 'vue';
+  import { ref, onMounted, watch, nextTick, onBeforeUnmount } from 'vue';
   import { bitable } from '@lark-base-open/js-sdk';
   import MarkdownIt from 'markdown-it';
-  import mathjax3 from 'markdown-it-mathjax3';
+  import markdownItMathjax from 'markdown-it-mathjax';
 
   // 初始化Markdown解析器，使用markdown-it-mathjax插件处理公式
   const md = new MarkdownIt({
@@ -18,11 +18,11 @@
     linkify: true,
     typographer: true,
     breaks: true  // 启用单个换行符转换为<br>标签
-  }).use(mathjax3, {
-    tex: {
-      inlineMath: [['$', '$'], ['\\(', '\\)']], // 与index.html的MathJax配置对齐
-      displayMath: [['$$', '$$'], ['\\[', '\\]']]
-    }
+  }).use(markdownItMathjax, {
+    inlineOpen: '$',
+    inlineClose: '$',
+    blockOpen: '$$',
+    blockClose: '$$'
   });
 
   // 选择的目标区域 'left' 或 'right'
@@ -40,118 +40,184 @@
   const leftLocked = ref(false);
   const rightLocked = ref(false);
 
+  // MathJax加载和渲染状态
+  const mathJaxLoaded = ref(false);
+  const mathJaxLoading = ref(false);
+  const renderAttempts = ref(0);
+  const maxRenderAttempts = 3;
+
   const base = bitable.base;
-  // 3. 新增：markdown解析+公式渲染的函数（替换你原有的解析逻辑）
-  const parseAndRenderMarkdown = async (content, targetRef) => {
-    // 步骤1：解析markdown为HTML
-    const parsedHtml = md.render(content);
-    // 步骤2：将解析后的HTML赋值给目标ref（更新DOM）
-    targetRef.value = parsedHtml;
-    // 步骤3：等待DOM更新完成后，强制触发MathJax渲染公式
-    await nextTick();
-    if (window.MathJax) {
-      window.MathJax.typesetClear(); // 清空缓存
-      window.MathJax.typeset(); // 重新扫描DOM渲染公式
-    }
-  };
-  
-  // 4. 示例：在需要解析markdown的地方调用该函数（比如内容变化时）
-  // （替换你原有的markdown解析逻辑，以leftContent为例）
-  watch(leftContent, (newVal) => {
-    parseAndRenderMarkdown(newVal, leftHtmlContent);
-  });
-  
-  // 5. 组件挂载时，若有初始内容，执行一次解析
-  onMounted(() => {
-    if (leftContent.value) {
-      parseAndRenderMarkdown(leftContent.value, leftHtmlContent);
-    }
-    if (rightContent.value) {
-      parseAndRenderMarkdown(rightContent.value, rightHtmlContent);
-    }
-  });
+
   // 动态加载MathJax 3
-  const loadMathJax = () => {
-    return new Promise((resolve) => {
-      if (window.MathJax) {
-        resolve();
-        return;
-      }
+  const loadMathJax = async () => {
+    // 如果已经加载或正在加载，直接返回
+    if (mathJaxLoaded.value || mathJaxLoading.value) {
+      return;
+    }
 
-      // MathJax 3配置，支持所有常用的数学命令
-      window.MathJax = {
-        tex: {
-          inlineMath: [['$', '$'], ['\\(', '\\)']],
-          displayMath: [['$$', '$$'], ['\\[', '\\]']],
-          processEscapes: true,
-          packages: {
-            '[+]': ['text']  // 确保text包被加载，支持\text命令
-          },
-          text: {
-            inlineMath: [['$', '$'], ['\\(', '\\)']]
-          }
-        },
-        svg: {
-          fontCache: 'global'
-        },
-        options: {
-          skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
-          enableMenu: false,
-          renderActions: {
-            insertedScript: [200, () => {
-              resolve();
-            }]
-          }
+    mathJaxLoading.value = true;
+
+    // 使用Promise封装MathJax加载
+    return new Promise((resolve, reject) => {
+      try {
+        // 如果MathJax已经在全局对象上，直接使用
+        if (window.MathJax) {
+          mathJaxLoaded.value = true;
+          mathJaxLoading.value = false;
+          resolve();
+          return;
         }
-      };
 
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
-      script.async = true;
-      script.onload = () => resolve();
-      document.head.appendChild(script);
+        // MathJax 3配置，支持所有常用的数学命令
+        window.MathJax = {
+          tex: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']],
+            displayMath: [['$$', '$$'], ['\\[', '\\]']],
+            processEscapes: true,
+            packages: {
+              '[+]': ['text', 'ams', 'noerrors', 'noundefined']  // 加载所有必要的包
+            }
+          },
+          svg: {
+            fontCache: 'global',
+            scale: 1.1,  // 稍微放大公式以提高可读性
+            linebreaks: {
+              automatic: true
+            }
+          },
+          options: {
+            skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
+            enableMenu: false,
+            renderActions: {
+              insertedScript: [200, () => {
+                mathJaxLoaded.value = true;
+                mathJaxLoading.value = false;
+                resolve();
+              }]
+            }
+          }
+        };
+
+        // 创建MathJax脚本标签
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg-full.js';  // 使用完整包以支持所有命令
+        script.async = true;
+        script.id = 'MathJax-script';
+        script.crossOrigin = 'anonymous';
+        
+        // 添加错误处理
+        script.onerror = (error) => {
+          console.error('MathJax加载失败:', error);
+          mathJaxLoading.value = false;
+          reject(new Error('MathJax加载失败'));
+        };
+
+        document.head.appendChild(script);
+      } catch (error) {
+        console.error('MathJax加载过程中发生错误:', error);
+        mathJaxLoading.value = false;
+        reject(error);
+      }
     });
   };
 
   // 渲染MathJax公式
   const renderMathJax = async () => {
-    await loadMathJax();
-    if (window.MathJax) {
-      try {
+    try {
+      // 确保MathJax已加载
+      await loadMathJax();
+
+      if (window.MathJax) {
         // 清除之前的渲染任务
         window.MathJax.typesetClear();
+        
         // 渲染当前页面的所有公式
         await window.MathJax.typesetPromise();
+        
         console.log('MathJax渲染完成');
-      } catch (e) {
-        console.warn('MathJax渲染错误:', e);
+        renderAttempts.value = 0; // 重置渲染尝试次数
+        return true;
       }
+      return false;
+    } catch (e) {
+      console.warn('MathJax渲染错误:', e);
+      
+      // 如果渲染失败，尝试重新渲染，但限制尝试次数
+      renderAttempts.value++;
+      if (renderAttempts.value < maxRenderAttempts) {
+        console.log(`尝试重新渲染，第${renderAttempts.value}次`);
+        // 等待一小段时间后重新尝试
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return renderMathJax();
+      }
+      
+      console.error(`MathJax渲染失败，已尝试${maxRenderAttempts}次`);
+      renderAttempts.value = 0;
+      return false;
     }
   };
 
-  // 自定义Markdown渲染函数，现在直接使用markdown-it-mathjax插件
+  // 自定义Markdown渲染函数
   const renderMarkdown = (content) => {
     if (!content) return '';
     
-    // 直接使用markdown-it-mathjax插件处理公式
-    return md.render(content);
+    // 清理内容，确保公式格式正确
+    let cleanedContent = content;
+    
+    // 处理可能的转义问题
+    cleanedContent = cleanedContent.replace(/\\\$/g, '$');
+    cleanedContent = cleanedContent.replace(/\\\\/g, '\\');
+    
+    // 处理块级公式的换行问题
+    cleanedContent = cleanedContent.replace(/\$\$\s*\n/g, '$$');
+    cleanedContent = cleanedContent.replace(/\n\s*\$\$/g, '$$');
+    
+    // 使用markdown-it渲染
+    return md.render(cleanedContent);
+  };
+
+  // 定时检查并重新渲染公式（用于处理延迟加载的内容）
+  const scheduleRenderCheck = () => {
+    setTimeout(async () => {
+      if (!mathJaxLoaded.value) {
+        await loadMathJax();
+      }
+      await renderMathJax();
+    }, 1000);
   };
 
   // 监听内容变化，自动重新渲染公式
-  watch([leftContent, rightContent], async () => {
+  watch([leftContent, rightContent], async (newValues) => {
+    const [newLeft, newRight] = newValues;
+    
+    // 根据选中区域和锁定状态更新HTML内容
     if (selectedArea.value === 'left' && !leftLocked.value) {
-      leftHtmlContent.value = renderMarkdown(leftContent.value);
-    } else if (selectedArea.value === 'right' && !rightLocked.value) {
-      rightHtmlContent.value = renderMarkdown(rightContent.value);
+      leftHtmlContent.value = renderMarkdown(newLeft);
+    } 
+    
+    if (selectedArea.value === 'right' && !rightLocked.value) {
+      rightHtmlContent.value = renderMarkdown(newRight);
     }
     
     // 等待DOM更新后再渲染公式
     await nextTick();
+    
+    // 立即尝试渲染
     await renderMathJax();
+    
+    // 安排额外的渲染检查，确保所有内容都被渲染
+    scheduleRenderCheck();
   }, { immediate: false, deep: true });
+
+  // 监听HTML内容变化，确保DOM更新后重新渲染
+  watch([leftHtmlContent, rightHtmlContent], async () => {
+    await nextTick();
+    await renderMathJax();
+  });
 
   onMounted(async () => {
     selectedArea.value = 'left';
+    
     // 添加默认的Markdown示例用于测试
     const defaultMarkdown = `# 公式测试示例
 
@@ -181,14 +247,31 @@ $$V_m = V_c \times \epsilon$$
 $$ \\frac{\\partial L}{\\partial w} = \\frac{\\partial L}{\\partial y} \\cdot \\frac{\\partial y}{\\partial z} \\cdot \\frac{\\partial z}{\\partial w} $$
 
 ### 包含文本的公式
-$$V_m \\approx 0.5 \\times L\\text{(cm)} \\times d\\text{(cm)}^2 \\times \\pi / 4$$`;
+$$V_m \\approx 0.5 \\times L\\text{(cm)} \\times d\\text{(cm)}^2 \\times \\pi / 4$$
+
+### 用户问题公式
+$$V_c = \pi \times r^2 \times L$$`;
     
+    // 设置初始内容
     leftContent.value = defaultMarkdown;
     leftHtmlContent.value = renderMarkdown(defaultMarkdown);
     
     // 确保MathJax正确渲染公式
     await nextTick();
-    await renderMathJax();
+    
+    // 尝试加载并渲染MathJax
+    try {
+      await loadMathJax();
+      await renderMathJax();
+      
+      // 添加额外的渲染检查，确保复杂公式也能正确渲染
+      for (let i = 0; i < 2; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await renderMathJax();
+      }
+    } catch (error) {
+      console.error('初始化MathJax渲染失败:', error);
+    }
   });
 
   // 点击左侧区域
@@ -262,7 +345,17 @@ $$V_m \\approx 0.5 \\times L\\text{(cm)} \\times d\\text{(cm)}^2 \\times \\pi / 
         
         // 确保MathJax正确渲染公式
         await nextTick();
-        await renderMathJax();
+        
+        // 尝试渲染MathJax
+        try {
+          await loadMathJax();
+          await renderMathJax();
+          
+          // 安排额外的渲染检查
+          scheduleRenderCheck();
+        } catch (error) {
+          console.error('MathJax渲染失败:', error);
+        }
       } catch (error) {
         console.error('获取单元格内容失败:', error);
         // 错误信息也渲染成Markdown格式
@@ -273,6 +366,18 @@ $$V_m \\approx 0.5 \\times L\\text{(cm)} \\times d\\text{(cm)}^2 \\times \\pi / 
         } else if (selectedArea.value === 'right' && !rightLocked.value) {
           rightHtmlContent.value = renderMarkdown(errorContent);
         }
+      }
+    }
+  });
+
+  // 组件卸载前清理
+  onBeforeUnmount(() => {
+    // 清理MathJax相关资源
+    if (window.MathJax) {
+      try {
+        window.MathJax.typesetClear();
+      } catch (e) {
+        console.warn('清理MathJax资源时出错:', e);
       }
     }
   });
@@ -590,5 +695,11 @@ $$V_m \\approx 0.5 \\times L\\text{(cm)} \\times d\\text{(cm)}^2 \\times \\pi / 
   .markdown-content :deep(.MathJax) {
     overflow-x: auto;
     overflow-y: hidden;
+  }
+  
+  /* SVG公式样式优化 */
+  .markdown-content :deep(math > svg) {
+    max-width: 100%;
+    height: auto;
   }
 </style>
